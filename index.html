@@ -131,7 +131,12 @@
   <script>
     async function loadRoster() {
       try {
-        const res = await fetch('https://expert-freeway-comrade.ngrok-free.dev/api/leaderboard');
+        // 💡 加上 ngrok-skip-browser-warning Header 繞過 ngrok 的免費版提示頁
+        const res = await fetch('https://expert-freeway-comrade.ngrok-free.dev/api/leaderboard', {
+          headers: {
+            'ngrok-skip-browser-warning': 'true'
+          }
+        });
         const allPlayers = await res.json();
         
         // 按隊伍分類
