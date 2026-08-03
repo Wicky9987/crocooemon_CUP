@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>特戰英豪戰績查詢</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #0f1923;
+      color: #ece8e1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background-color: #1f2326;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      width: 100%;
+      max-width: 400px;
+      border: 1px solid #36393e;
+    }
+    h2 {
+      color: #ff4655;
+      margin-top: 0;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .input-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    input {
+      background: #2b2f32;
+      border: 1px solid #414447;
+      color: #fff;
+      padding: 12px;
+      border-radius: 6px;
+      outline: none;
+      font-size: 14px;
+    }
+    input#name { flex: 2; }
+    input#tag { flex: 1; }
+    input:focus { border-color: #ff4655; }
+    
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: #ff4655;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.2s;
+    }
+    button:hover { background-color: #e03e4d; }
+    button:disabled { background-color: #777; cursor: not-allowed; }
+
+    .result-box {
+      margin-top: 25px;
+      padding-top: 20px;
+      border-top: 1px solid #36393e;
+      display: none;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      font-size: 15px;
+    }
+    .stat-value { font-weight: bold; }
+    .text-green { color: #00da7d; }
+    .text-red { color: #ff4655; }
+    .error-msg { color: #ff4655; text-align: center; margin-top: 15px; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>VALORANT 戰績檢視器</h2>
+    
+    <div class="input-group">
+      <input type="text" id="name" placeholder="Riot ID (例如: TenZ)">
+      <input type="text" id="tag" placeholder="Tag (例如: 0000)">
+    </div>
+    
+    <button id="search-btn" onclick="fetchStats()">查詢戰績</button>
+    <div id="error" class="error-msg"></div>
+
+    <div id="result" class="result-box">
+      <div class="stat-row">
+        <span>玩家 ID</span>
+        <span id="res-player" class="stat-value"></span>
+      </div>
+      <div class="stat-row">
+        <span>對戰模式</span>
+        <span class="stat-value">競技模式 (最近 10 場)</span>
+      </div>
+      <div class="stat-row">
+        <span>勝敗紀錄</span>
+        <span id="res-record" class="stat-value"></span>
+      </div>
+      <div class="stat-row">
+        <span>勝率</span>
+        <span id="res-winrate" class="stat-value text-green"></span>
+      </div>
+      <div class="stat-row">
+        <span>爆頭率 (HS%)</span>
+        <span id="res-hsrate" class="stat-value text-red"></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function fetchStats() {
+      const name = document.getElementById('name').value.trim();
+      const tag = document.getElementById('tag').value.trim();
+      const errorDiv = document.getElementById('error');
+      const resultDiv = document.getElementById('result');
+      const btn = document.getElementById('search-btn');
+
+      // 重置狀態
+      errorDiv.innerText = '';
+      resultDiv.style.display = 'none';
+
+      if (!name || !tag) {
+        errorDiv.innerText = '請完整輸入 Riot ID 與 Tag！';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerText = '查詢中...';
+
+      try {
+        // 呼叫你的本機 FastAPI 後端 (Port 8000)
+        const response = await fetch(`http://127.0.0.1:8000/api/stats?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || '查詢失敗，請檢查 ID/Tag 是否正確');
+        }
+
+        if (data.message) {
+          throw new Error(data.message);
+        }
+
+        // 渲染資料
+        document.getElementById('res-player').innerText = data.player;
+        document.getElementById('res-record').innerText = `${data.wins} 勝 ${data.losses} 敗`;
+        document.getElementById('res-winrate').innerText = data.win_rate;
+        document.getElementById('res-hsrate').innerText = data.hs_rate;
+        
+        resultDiv.style.display = 'block';
+
+      } catch (err) {
+        errorDiv.innerText = err.message;
+      } finally {
+        btn.disabled = false;
+        btn.innerText = '查詢戰績';
+      }
+    }
+  </script>
+</body>
+</html>

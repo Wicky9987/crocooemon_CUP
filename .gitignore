@@ -1,0 +1,12 @@
+# 隱私 API Key 檔案
+.env
+
+# SQLite 資料庫檔案 (避免覆蓋)
+*.db
+*.sqlite3
+
+# Python 快取與環境
+__pycache__/
+*.pyc
+venv/
+.venv/

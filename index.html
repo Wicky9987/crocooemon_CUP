@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VALORANT 戰隊名單與數據中心</title>
+  <style>
+    /* 基礎賽事風格 */
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #050a05;
+      color: #fff;
+      margin: 0;
+      padding: 40px 20px;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .header h1 {
+      color: #fff;
+      font-size: 32px;
+      font-style: italic;
+      font-weight: 900;
+      letter-spacing: 4px;
+      margin: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 15px;
+    }
+    .header h1::before, .header h1::after {
+      content: "";
+      display: block;
+      width: 60px;
+      height: 4px;
+      background: #50c828;
+      transform: skewX(-30deg);
+    }
+
+    /* 雙欄隊伍網格 */
+    .teams-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      max-width: 1300px;
+      margin: 0 auto;
+    }
+
+    /* 單一隊伍外框 */
+    .team-box {
+      border: 2px solid #50c828;
+      border-radius: 4px;
+      padding: 25px 15px 15px 15px;
+      position: relative;
+      background: linear-gradient(180deg, rgba(80,200,40,0.1) 0%, rgba(0,0,0,0) 100%);
+    }
+    
+    .team-title {
+      position: absolute;
+      top: -14px;
+      left: 15px;
+      background-color: #050a05;
+      color: #50c828;
+      font-size: 18px;
+      font-weight: 900;
+      font-style: italic;
+      padding: 0 10px;
+      letter-spacing: 1px;
+    }
+
+    .team-roster {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+    }
+
+    /* 玩家卡片 */
+    .player-box {
+      width: 75px;
+      display: flex;
+      flex-direction: column;
+      text-decoration: none;
+      transition: transform 0.2s, filter 0.2s;
+    }
+    .player-box:hover {
+      transform: translateY(-5px);
+      filter: brightness(1.2);
+    }
+
+    .player-img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      object-position: top;
+      border: 1.5px solid #fff;
+      border-bottom: none;
+      background-color: #111;
+    }
+
+    .player-name-tag {
+      background-color: #50c828;
+      color: #fff;
+      text-align: center;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 4px 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border: 1.5px solid #fff;
+      border-top: none;
+    }
+
+    @media (max-width: 900px) {
+      .teams-container { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>TEAMS</h1>
+  </div>
+
+  <div id="teams-grid" class="teams-container">
+    <!-- 隊伍將由 JavaScript 自動繪製 -->
+  </div>
+
+  <script>
+    async function loadRoster() {
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/leaderboard');
+        const allPlayers = await res.json();
+        
+        // 按隊伍分類
+        const groupedTeams = allPlayers.reduce((acc, p) => {
+          const teamName = p.team || 'FREE AGENT';
+          if (!acc[teamName]) acc[teamName] = [];
+          acc[teamName].push(p);
+          return acc;
+        }, {});
+
+        const grid = document.getElementById('teams-grid');
+        grid.innerHTML = '';
+
+        Object.keys(groupedTeams).forEach(teamName => {
+          const players = groupedTeams[teamName];
+          let playersHtml = '';
+
+          players.forEach(p => {
+            playersHtml += `
+              <a href="player.html?name=${encodeURIComponent(p.name)}&tag=${encodeURIComponent(p.tag)}" 
+                 class="player-box" 
+                 title="${p.name}#${p.tag} (勝率: ${p.win_rate} / 爆頭率: ${p.hs_rate})">
+                <img class="player-img" src="${p.card_icon}" alt="${p.name}">
+                <div class="player-name-tag">${p.name}</div>
+              </a>
+            `;
+          });
+
+          grid.innerHTML += `
+            <div class="team-box">
+              <div class="team-title">${teamName.toUpperCase()}</div>
+              <div class="team-roster">${playersHtml}</div>
+            </div>
+          `;
+        });
+
+      } catch (err) {
+        console.error("無法載入名單:", err);
+      }
+    }
+
+    loadRoster();
+  </script>
+</body>
+</html>

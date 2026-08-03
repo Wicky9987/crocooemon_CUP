@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>玩家個人數據分析</title>
+  <!-- 載入 Chart.js 繪製趨勢圖 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #0f1923;
+      color: #ece8e1;
+      margin: 0;
+      padding: 30px;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .back-btn {
+      color: #ff4655;
+      text-decoration: none;
+      font-weight: bold;
+      display: inline-block;
+      margin-bottom: 20px;
+    }
+    .player-header {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      background: #1f2326;
+      padding: 20px;
+      border-radius: 8px;
+      border-left: 5px solid #ff4655;
+      margin-bottom: 30px;
+    }
+    .player-header h2 { margin: 0; font-size: 28px; }
+    
+    /* 折線圖區塊 */
+    .chart-box {
+      background: #1f2326;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+    }
+
+    /* 歷史戰績卡片 */
+    .section-title {
+      color: #ff4655;
+      border-bottom: 2px solid #36393e;
+      padding-bottom: 8px;
+      margin-bottom: 20px;
+    }
+    .match-card {
+      background: #1f2326;
+      border-radius: 6px;
+      padding: 15px 20px;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-left: 6px solid #888;
+    }
+    .match-card.win { border-left-color: #00da7d; }
+    .match-card.loss { border-left-color: #ff4655; }
+    .tag-win { color: #00da7d; font-weight: bold; }
+    .tag-loss { color: #ff4655; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <a href="index.html" class="back-btn">← 返回戰隊名單</a>
+
+    <div class="player-header">
+      <div>
+        <h2 id="player-title">載入中...</h2>
+        <div style="color: #888;" id="player-sub">Riot ID</div>
+      </div>
+    </div>
+
+    <!-- 成長趨勢圖 -->
+    <div class="chart-box">
+      <h3 style="margin-top: 0;">每日爆頭率 & 勝率成長趨勢</h3>
+      <canvas id="trendChart" height="100"></canvas>
+    </div>
+
+    <!-- 歷史對戰紀錄 -->
+    <h3 class="section-title">最近 20 場競賽對戰紀錄</h3>
+    <div id="match-history-list">
+      <!-- JavaScript 會自動動態載入 -->
+    </div>
+  </div>
+
+  <script>
+    // 取得 URL 網址參數中的 name 與 tag
+    const urlParams = new URLSearchParams(window.location.search);
+    const name = urlParams.get('name');
+    const tag = urlParams.get('tag');
+
+    if (name && tag) {
+      document.getElementById('player-title').innerText = name;
+      document.getElementById('player-sub').innerText = `#${tag}`;
+      loadTrendData(name, tag);
+      loadHistoryData(name, tag);
+    }
+
+    // 1. 載入並繪製折線圖
+    async function loadTrendData(name, tag) {
+      try {
+        const res = await fetch(`http://127.0.0.1:8000/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/trend`);
+        const data = await res.json();
+
+        const ctx = document.getElementById('trendChart').getContext('2d');
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: data.dates.length > 0 ? data.dates : ['今天'],
+            datasets: [
+              {
+                label: '平均爆頭率 (%)',
+                data: data.hs_rates,
+                borderColor: '#ff4655',
+                backgroundColor: 'rgba(255, 70, 85, 0.1)',
+                fill: true,
+                tension: 0.3
+              },
+              {
+                label: '勝率 (%)',
+                data: data.win_rates,
+                borderColor: '#00da7d',
+                backgroundColor: 'rgba(0, 218, 125, 0.1)',
+                fill: true,
+                tension: 0.3
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: { beginAtZero: true, max: 100 }
+            }
+          }
+        });
+      } catch (err) {
+        console.error("無法載入趨勢圖:", err);
+      }
+    }
+
+    // 2. 載入最近歷史對戰
+    async function loadHistoryData(name, tag) {
+      try {
+        const res = await fetch(`http://127.0.0.1:8000/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/history`);
+        const matches = await res.json();
+
+        const listContainer = document.getElementById('match-history-list');
+        listContainer.innerHTML = '';
+
+        if (matches.length === 0) {
+          listContainer.innerHTML = '<div style="color: #888;">尚無歷史對戰紀錄數據</div>';
+          return;
+        }
+
+        matches.forEach(m => {
+          const isWin = m.result === '勝利';
+          listContainer.innerHTML += `
+            <div class="match-card ${isWin ? 'win' : 'loss'}">
+              <div>
+                <strong style="font-size: 18px;">${m.map}</strong> 
+                <span style="color: #aaa; font-size: 14px;">(${m.agent})</span>
+                <div style="font-size: 12px; color: #666; margin-top: 4px;">${m.game_time || ''}</div>
+              </div>
+              <div>
+                <span class="${isWin ? 'tag-win' : 'tag-loss'}">${m.result}</span>
+              </div>
+              <div>
+                <div>KDA: <strong>${m.kda}</strong></div>
+                <div style="font-size: 13px; color: #aaa;">爆頭率: ${m.hs_rate}</div>
+              </div>
+            </div>
+          `;
+        });
+      } catch (err) {
+        console.error("無法載入歷史對戰:", err);
+      }
+    }
+  </script>
+</body>
+</html>
