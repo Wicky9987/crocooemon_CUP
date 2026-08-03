@@ -109,7 +109,12 @@
     // 1. 載入並繪製折線圖
     async function loadTrendData(name, tag) {
       try {
-        const res = await fetch(`https://expert-freeway-comrade.ngrok-free.dev/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/trend`);
+        // 💡 加上 ngrok Header 避免被阻擋
+        const res = await fetch(`https://expert-freeway-comrade.ngrok-free.dev/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/trend`, {
+          headers: {
+            'ngrok-skip-browser-warning': 'true'
+          }
+        });
         const data = await res.json();
 
         const ctx = document.getElementById('trendChart').getContext('2d');
@@ -151,7 +156,12 @@
     // 2. 載入最近歷史對戰
     async function loadHistoryData(name, tag) {
       try {
-        const res = await fetch(`https://expert-freeway-comrade.ngrok-free.dev/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/history`);
+        // 💡 加上 ngrok Header 避免被阻擋
+        const res = await fetch(`https://expert-freeway-comrade.ngrok-free.dev/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/history`, {
+          headers: {
+            'ngrok-skip-browser-warning': 'true'
+          }
+        });
         const matches = await res.json();
 
         const listContainer = document.getElementById('match-history-list');
