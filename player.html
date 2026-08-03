@@ -109,7 +109,7 @@
     // 1. 載入並繪製折線圖
     async function loadTrendData(name, tag) {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/trend`);
+        const res = await fetch(`https://expert-freeway-comrade.ngrok-free.dev/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/trend`);
         const data = await res.json();
 
         const ctx = document.getElementById('trendChart').getContext('2d');
@@ -151,7 +151,7 @@
     // 2. 載入最近歷史對戰
     async function loadHistoryData(name, tag) {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/history`);
+        const res = await fetch(`https://expert-freeway-comrade.ngrok-free.dev/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/history`);
         const matches = await res.json();
 
         const listContainer = document.getElementById('match-history-list');

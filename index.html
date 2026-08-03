@@ -131,7 +131,7 @@
   <script>
     async function loadRoster() {
       try {
-        const res = await fetch('http://127.0.0.1:8000/api/leaderboard');
+        const res = await fetch('https://expert-freeway-comrade.ngrok-free.dev/api/leaderboard');
         const allPlayers = await res.json();
         
         // 按隊伍分類
