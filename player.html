@@ -94,6 +94,9 @@
   </div>
 
   <script>
+    // 保存圖表實例以防重複繪製產生警告
+    let trendChartInstance = null;
+
     // 取得 URL 網址參數中的 name 與 tag
     const urlParams = new URLSearchParams(window.location.search);
     const name = urlParams.get('name');
@@ -109,23 +112,25 @@
     // 1. 載入並繪製折線圖
     async function loadTrendData(name, tag) {
       try {
-        // 💡 加上 ngrok Header 避免被阻擋
-        const res = await fetch(`https://expert-freeway-comrade.ngrok-free.dev/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/trend`, {
-          headers: {
-            'ngrok-skip-browser-warning': 'true'
-          }
-        });
+        // 改用 Render 雲端 API 網址
+        const res = await fetch(`https://crocooemon-cup.onrender.com/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/trend`);
         const data = await res.json();
 
         const ctx = document.getElementById('trendChart').getContext('2d');
-        new Chart(ctx, {
+
+        // 若舊的圖表物件存在先銷毀
+        if (trendChartInstance) {
+          trendChartInstance.destroy();
+        }
+
+        trendChartInstance = new Chart(ctx, {
           type: 'line',
           data: {
-            labels: data.dates.length > 0 ? data.dates : ['今天'],
+            labels: (data.dates && data.dates.length > 0) ? data.dates : ['今天'],
             datasets: [
               {
                 label: '平均爆頭率 (%)',
-                data: data.hs_rates,
+                data: (data.hs_rates && data.hs_rates.length > 0) ? data.hs_rates : [0],
                 borderColor: '#ff4655',
                 backgroundColor: 'rgba(255, 70, 85, 0.1)',
                 fill: true,
@@ -133,7 +138,7 @@
               },
               {
                 label: '勝率 (%)',
-                data: data.win_rates,
+                data: (data.win_rates && data.win_rates.length > 0) ? data.win_rates : [0],
                 borderColor: '#00da7d',
                 backgroundColor: 'rgba(0, 218, 125, 0.1)',
                 fill: true,
@@ -156,18 +161,14 @@
     // 2. 載入最近歷史對戰
     async function loadHistoryData(name, tag) {
       try {
-        // 💡 加上 ngrok Header 避免被阻擋
-        const res = await fetch(`https://expert-freeway-comrade.ngrok-free.dev/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/history`, {
-          headers: {
-            'ngrok-skip-browser-warning': 'true'
-          }
-        });
+        // 改用 Render 雲端 API 網址
+        const res = await fetch(`https://crocooemon-cup.onrender.com/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/history`);
         const matches = await res.json();
 
         const listContainer = document.getElementById('match-history-list');
         listContainer.innerHTML = '';
 
-        if (matches.length === 0) {
+        if (!matches || matches.length === 0) {
           listContainer.innerHTML = '<div style="color: #888;">尚無歷史對戰紀錄數據</div>';
           return;
         }
