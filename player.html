@@ -82,7 +82,7 @@
 
     <!-- 成長趨勢圖 -->
     <div class="chart-box">
-      <h3 style="margin-top: 0;">每日爆頭率 & 勝率成長趨勢</h3>
+      <h3 style="margin-top: 0;">每日爆頭率 & 勝率成長趨勢 (從 8/2 起)</h3>
       <canvas id="trendChart" height="100"></canvas>
     </div>
 
@@ -109,16 +109,30 @@
       loadHistoryData(name, tag);
     }
 
-    // 1. 載入並繪製折線圖
+    // 1. 載入並繪製折線圖 (僅顯示 2026-08-02 起的數據)
     async function loadTrendData(name, tag) {
       try {
-        // 改用 Render 雲端 API 網址
         const res = await fetch(`https://crocooemon-cup.onrender.com/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/trend`);
         const data = await res.json();
 
+        // 前端過濾：只保留 2026-08-02 之後（含）的日期與對應數值
+        const startDate = "2026-08-02";
+        const filteredDates = [];
+        const filteredHsRates = [];
+        const filteredWinRates = [];
+
+        if (data.dates && data.dates.length > 0) {
+          data.dates.forEach((dateStr, index) => {
+            if (dateStr >= startDate) {
+              filteredDates.push(dateStr);
+              filteredHsRates.push(data.hs_rates[index]);
+              filteredWinRates.push(data.win_rates[index]);
+            }
+          });
+        }
+
         const ctx = document.getElementById('trendChart').getContext('2d');
 
-        // 若舊的圖表物件存在先銷毀
         if (trendChartInstance) {
           trendChartInstance.destroy();
         }
@@ -126,11 +140,11 @@
         trendChartInstance = new Chart(ctx, {
           type: 'line',
           data: {
-            labels: (data.dates && data.dates.length > 0) ? data.dates : ['今天'],
+            labels: filteredDates.length > 0 ? filteredDates : ['尚無 8/2 後數據'],
             datasets: [
               {
                 label: '平均爆頭率 (%)',
-                data: (data.hs_rates && data.hs_rates.length > 0) ? data.hs_rates : [0],
+                data: filteredHsRates.length > 0 ? filteredHsRates : [0],
                 borderColor: '#ff4655',
                 backgroundColor: 'rgba(255, 70, 85, 0.1)',
                 fill: true,
@@ -138,7 +152,7 @@
               },
               {
                 label: '勝率 (%)',
-                data: (data.win_rates && data.win_rates.length > 0) ? data.win_rates : [0],
+                data: filteredWinRates.length > 0 ? filteredWinRates : [0],
                 borderColor: '#00da7d',
                 backgroundColor: 'rgba(0, 218, 125, 0.1)',
                 fill: true,
@@ -158,12 +172,11 @@
       }
     }
 
-    // 2. 載入最近歷史對戰
+    // 2. 載入最近歷史對戰 (依時間降序排序)
     async function loadHistoryData(name, tag) {
       try {
-        // 改用 Render 雲端 API 網址
         const res = await fetch(`https://crocooemon-cup.onrender.com/api/player/${encodeURIComponent(name)}/${encodeURIComponent(tag)}/history`);
-        const matches = await res.json();
+        let matches = await res.json();
 
         const listContainer = document.getElementById('match-history-list');
         listContainer.innerHTML = '';
@@ -173,14 +186,34 @@
           return;
         }
 
+        // 💡 核心改動：按開賽時間由最新到最舊排序
+        matches.sort((a, b) => new Date(b.game_time) - new Date(a.game_time));
+
         matches.forEach(m => {
           const isWin = m.result === '勝利';
+
+          // 格式化日期與時間為當地標準格式 (YYYY/MM/DD HH:MM)
+          let formattedTime = '';
+          if (m.game_time) {
+            const d = new Date(m.game_time);
+            if (!isNaN(d.getTime())) {
+              const year = d.getFullYear();
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              const hours = String(d.getHours()).padStart(2, '0');
+              const minutes = String(d.getMinutes()).padStart(2, '0');
+              formattedTime = `${year}/${month}/${day} ${hours}:${minutes}`;
+            } else {
+              formattedTime = m.game_time;
+            }
+          }
+
           listContainer.innerHTML += `
             <div class="match-card ${isWin ? 'win' : 'loss'}">
               <div>
                 <strong style="font-size: 18px;">${m.map}</strong> 
                 <span style="color: #aaa; font-size: 14px;">(${m.agent})</span>
-                <div style="font-size: 12px; color: #666; margin-top: 4px;">${m.game_time || ''}</div>
+                <div style="font-size: 12px; color: #666; margin-top: 4px;">${formattedTime}</div>
               </div>
               <div>
                 <span class="${isWin ? 'tag-win' : 'tag-loss'}">${m.result}</span>
