@@ -3,7 +3,7 @@ import os
 import sqlite3
 import urllib.parse
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
@@ -20,7 +20,50 @@ if not API_KEY:
 
 DB_NAME = "valorant_stats.db"
 
-# 2. 資料庫輔助函式：取得目前啟用的玩家
+# 2. 資料庫輔助函式：自動修復舊對戰時間字串 (一次性修復舊 DB)
+def fix_existing_match_history_time():
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("SELECT match_id, player_id, game_start FROM match_history")
+        rows = cursor.fetchall()
+
+        tz_tw = timezone(timedelta(hours=8))
+        updated_count = 0
+
+        for match_id, player_id, raw_start in rows:
+            if not raw_start or "上午" in raw_start or "下午" in raw_start:
+                continue
+
+            try:
+                # 解析原本 HenrikDev UTC 格式: "Monday, August 03, 2026 09:00 AM"
+                dt_utc = datetime.strptime(raw_start, "%A, %B %d, %Y %I:%M %p").replace(tzinfo=timezone.utc)
+                dt_tw = dt_utc.astimezone(tz_tw)
+
+                period = "上午" if dt_tw.hour < 12 else "下午"
+                hour_12 = dt_tw.hour % 12
+                if hour_12 == 0:
+                    hour_12 = 12
+
+                new_time_str = f"{dt_tw.year}/{dt_tw.month}/{dt_tw.day} {period}{hour_12}:{dt_tw.minute:02d}"
+
+                cursor.execute("""
+                    UPDATE match_history 
+                    SET game_start = ? 
+                    WHERE match_id = ? AND player_id = ?
+                """, (new_time_str, match_id, player_id))
+                updated_count += 1
+            except Exception:
+                pass
+
+        conn.commit()
+        conn.close()
+        if updated_count > 0:
+            print(f"✨ [DB 自動修復] 成功將 {updated_count} 筆雲端舊歷史紀錄的時間轉換為台灣時間！")
+    except Exception as e:
+        print(f"⚠️ [DB 自動修復跳過]: {e}")
+
+# 取得目前啟用的玩家
 def get_active_players_from_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -31,20 +74,15 @@ def get_active_players_from_db():
 
 # 3. 帶有指數退避重試機制的 HTTP 請求輔助函式
 async def fetch_with_backoff(client: httpx.AsyncClient, url: str, headers: dict, max_retries: int = 3):
-    """
-    遇到 429 時自動進行指數退避重試 (Exponential Backoff)
-    """
     for attempt in range(max_retries):
         try:
             response = await client.get(url, headers=headers)
-            
-            # 如果遇到 429 限流
             if response.status_code == 429:
                 retry_after_hdr = response.headers.get("Retry-After")
                 if retry_after_hdr and retry_after_hdr.isdigit():
                     wait_time = int(retry_after_hdr)
                 else:
-                    wait_time = 2 ** (attempt + 1)  # 2s, 4s, 8s...
+                    wait_time = 2 ** (attempt + 1)
                 
                 print(f"⚠️ [HTTP 429 限流] 觸發 API 限制，等待 {wait_time} 秒後進行第 {attempt + 1}/{max_retries} 次重試...")
                 await asyncio.sleep(wait_time)
@@ -58,7 +96,7 @@ async def fetch_with_backoff(client: httpx.AsyncClient, url: str, headers: dict,
             
     return None
 
-# 4. 定時排程抓取主任務 (包含二次重試機制)
+# 4. 定時排程抓取主任務
 async def fetch_and_update_all_friends():
     target_players = get_active_players_from_db()
     
@@ -68,7 +106,6 @@ async def fetch_and_update_all_friends():
 
     print(f"\n⏰ [大循環任務啟動] 從 DB 讀取到 {len(target_players)} 位玩家，開始同步戰績...")
 
-    # 💡 處理單一玩家的請求與寫庫邏輯
     async def process_single_player(client: httpx.AsyncClient, p_info: dict) -> bool:
         name = p_info["name"]
         tag = p_info["tag"]
@@ -100,7 +137,22 @@ async def fetch_and_update_all_friends():
                     metadata = m.get("metadata") or {}
                     match_id = metadata.get("matchid")
                     map_name = metadata.get("map")
-                    game_start = metadata.get("game_start_patched")
+                    
+                    # 使用 raw timestamp 並轉為台灣時間 (UTC+8)
+                    raw_start = metadata.get("game_start")
+                    if raw_start:
+                        try:
+                            tz_tw = timezone(timedelta(hours=8))
+                            dt = datetime.fromtimestamp(raw_start, tz=tz_tw)
+                            period = "上午" if dt.hour < 12 else "下午"
+                            hour_12 = dt.hour % 12
+                            if hour_12 == 0:
+                                hour_12 = 12
+                            game_start = f"{dt.year}/{dt.month}/{dt.day} {period}{hour_12}:{dt.minute:02d}"
+                        except Exception:
+                            game_start = metadata.get("game_start_patched", "")
+                    else:
+                        game_start = metadata.get("game_start_patched", "")
 
                     player_data = None
                     all_players = (m.get("players") or {}).get("all_players") or []
@@ -135,9 +187,16 @@ async def fetch_and_update_all_friends():
                         wins += is_win
 
                         cursor.execute('''
-                            INSERT OR IGNORE INTO match_history 
+                            INSERT INTO match_history 
                             (match_id, player_id, map_name, agent, kills, deaths, assists, headshots, bodyshots, legshots, hs_rate, is_win, game_start)
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(match_id, player_id) DO UPDATE SET
+                                game_start=excluded.game_start,
+                                kills=excluded.kills,
+                                deaths=excluded.deaths,
+                                assists=excluded.assists,
+                                hs_rate=excluded.hs_rate,
+                                is_win=excluded.is_win
                         ''', (match_id, player_id, map_name, player_data.get("character"), kills, deaths, assists, hs, bs, ls, m_hs_rate, is_win, game_start))
 
                 match_count = len(matches)
@@ -178,11 +237,9 @@ async def fetch_and_update_all_friends():
         print(f"⚠️ [更新失敗] {player_id} (HTTP {status})")
         return False
 
-    # --- 排程任務主要流程 ---
     failed_players = []
 
     async with httpx.AsyncClient(timeout=15.0) as client:
-        # 1️⃣ 第一輪：遍歷所有玩家 (每位玩家間隔 2.5 秒以避免觸發 429)
         for p_info in target_players:
             try:
                 success = await process_single_player(client, p_info)
@@ -192,10 +249,8 @@ async def fetch_and_update_all_friends():
                 print(f"❌ [例外錯誤] {p_info['name']}#{p_info['tag']}: {str(e)}")
                 failed_players.append(p_info)
 
-            # 單一玩家間隔 2.5 秒
             await asyncio.sleep(2.5)
 
-        # 2️⃣ 第二輪：針對失敗玩家進行二次補救重試
         if failed_players:
             print(f"\n🔄 [開始二次補救重試] 共有 {len(failed_players)} 位玩家第一輪更新失敗，準備重試...")
             await asyncio.sleep(5)
@@ -223,10 +278,13 @@ scheduler = AsyncIOScheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 伺服器啟動時，立即於背景異步跑第一輪全隊同步
+    # 💡 伺服器啟動時，先自動修復舊 DB 資料庫的時間欄位
+    fix_existing_match_history_time()
+
+    # 啟動時於背景異步執行第一輪同步
     asyncio.create_task(fetch_and_update_all_friends())
     
-    # 💡【重點修改】：大循環設為每 8 分鐘自動跑一輪，徹底防止 Render 進入 15 分鐘休眠！
+    # 每 8 分鐘大循環
     scheduler.add_job(fetch_and_update_all_friends, 'interval', minutes=8)
     scheduler.start()
     yield
