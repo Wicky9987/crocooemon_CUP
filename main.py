@@ -66,7 +66,7 @@ async def fetch_and_update_all_friends():
         print("⚠️ [定時任務] 資料庫內目前沒有設定追蹤的玩家。")
         return
 
-    print(f"\n⏰ [定時任務啟動] 從 DB 讀取到 {len(target_players)} 位玩家，開始同步戰績...")
+    print(f"\n⏰ [大循環任務啟動] 從 DB 讀取到 {len(target_players)} 位玩家，開始同步戰績...")
 
     # 💡 處理單一玩家的請求與寫庫邏輯
     async def process_single_player(client: httpx.AsyncClient, p_info: dict) -> bool:
@@ -182,7 +182,7 @@ async def fetch_and_update_all_friends():
     failed_players = []
 
     async with httpx.AsyncClient(timeout=15.0) as client:
-        # 1️⃣ 第一輪：大迴圈遍歷所有玩家 (每位間隔 10 秒)
+        # 1️⃣ 第一輪：遍歷所有玩家 (每位玩家間隔 2.5 秒以避免觸發 429)
         for p_info in target_players:
             try:
                 success = await process_single_player(client, p_info)
@@ -192,14 +192,13 @@ async def fetch_and_update_all_friends():
                 print(f"❌ [例外錯誤] {p_info['name']}#{p_info['tag']}: {str(e)}")
                 failed_players.append(p_info)
 
-            # 💡 每次大迴圈強制等待 10 秒
-            await asyncio.sleep(10)
+            # 單一玩家間隔 2.5 秒
+            await asyncio.sleep(2.5)
 
-        # 2️⃣ 第二輪：大迴圈結束後，針對失敗玩家二次重試
+        # 2️⃣ 第二輪：針對失敗玩家進行二次補救重試
         if failed_players:
             print(f"\n🔄 [開始二次補救重試] 共有 {len(failed_players)} 位玩家第一輪更新失敗，準備重試...")
-            # 補救前讓 API 額外休息 15 秒
-            await asyncio.sleep(15)
+            await asyncio.sleep(5)
 
             still_failed_count = 0
             for p_info in failed_players:
@@ -213,22 +212,22 @@ async def fetch_and_update_all_friends():
                     print(f"❌ [補救失敗] {player_id}: {str(e)}")
                     still_failed_count += 1
 
-                await asyncio.sleep(10)
+                await asyncio.sleep(2.5)
 
             print(f"\n🏁 [二次重試完成] 成功補救 {len(failed_players) - still_failed_count} 人，最終仍失敗 {still_failed_count} 人。")
         else:
-            print("\n✨ [定時任務完全成功] 本輪所有玩家皆已順利更新完成！")
+            print("\n✨ [大循環完全成功] 本輪所有玩家皆已順利更新完成！")
 
 # 5. Lifespan 與排程器設定
 scheduler = AsyncIOScheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 啟動時於背景異步執行第一輪同步
+    # 伺服器啟動時，立即於背景異步跑第一輪全隊同步
     asyncio.create_task(fetch_and_update_all_friends())
     
-    # 💡 由於 25 人一輪加間隔耗時約 5 分鐘，排程間隔建議設為 15 分鐘
-    scheduler.add_job(fetch_and_update_all_friends, 'interval', minutes=15)
+    # 💡【重點修改】：大循環設為每 8 分鐘自動跑一輪，徹底防止 Render 進入 15 分鐘休眠！
+    scheduler.add_job(fetch_and_update_all_friends, 'interval', minutes=8)
     scheduler.start()
     yield
     scheduler.shutdown()
