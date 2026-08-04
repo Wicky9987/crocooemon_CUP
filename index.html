@@ -131,12 +131,8 @@
   <script>
     async function loadRoster() {
       try {
-        // 💡 加上 ngrok-skip-browser-warning Header 繞過 ngrok 的免費版提示頁
-        const res = await fetch('https://expert-freeway-comrade.ngrok-free.dev/api/leaderboard', {
-          headers: {
-            'ngrok-skip-browser-warning': 'true'
-          }
-        });
+        // 直接存取 Render 雲端 API 取得戰隊列表
+        const res = await fetch('https://crocooemon-cup.onrender.com/api/leaderboard');
         const allPlayers = await res.json();
         
         // 按隊伍分類
